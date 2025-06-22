@@ -1,0 +1,55 @@
+services:
+  web-app:
+    build: ./app
+    container_name: water-meter-web
+    ports:
+      - "8000:8000"
+    environment:
+      - MILVUS_HOST=milvus-standalone
+      - MILVUS_PORT=19530
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    depends_on:
+      - milvus-standalone
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      # For Windows, you might need absolute paths like:
+      # - D:/Private/Python/water-meter-scanner/uploads:/app/uploads
+    restart: unless-stopped
+    networks:
+      - water-meter-network
+
+  milvus-standalone:
+    container_name: milvus-standalone
+    image: milvusdb/milvus:v2.5.0
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_USE_EMBED: true
+      ETCD_DATA_DIR: /var/lib/milvus/etcd
+      ETCD_CONFIG_PATH: /milvus/configs/embed_etcd.yaml
+      COMMON_STORAGETYPE: local
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    volumes:
+      - milvus_data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - water-meter-network
+
+networks:
+  water-meter-network:
+    driver: bridge
+
+volumes:
+  milvus_data:
