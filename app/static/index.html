@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Meter Scanner</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🌊 Water Meter Scanner</h1>
+            <p>AI-powered water meter reading extraction and analysis</p>
+        </header>
+
+        <div class="features-section">
+            <h2>🚀 Features</h2>
+            
+            <div class="feature-card">
+                <h3>📸 Upload Meter Images</h3>
+                <p>Upload photos of water meters with address information</p>
+                <div class="upload-form">
+                    <form id="uploadForm">
+                        <div class="form-group">
+                            <label for="image">Water Meter Image:</label>
+                            <input type="file" id="image" name="image" accept="image/*" disabled>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="city">City:</label>
+                                <input type="text" id="city" name="city" placeholder="e.g., New York" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label for="street">Street Name:</label>
+                                <input type="text" id="street" name="street" placeholder="e.g., Main Street" disabled>
+                            </div>
+                            <div class="form-group">
+                                <label for="number">Street Number:</label>
+                                <input type="text" id="number" name="number" placeholder="e.g., 123" disabled>
+                            </div>
+                        </div>
+                        <button type="submit" disabled>Upload & Process</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="feature-card">
+                <h3>💬 Chat Interface</h3>
+                <p>Ask questions about meter readings using natural language</p>
+                <div class="chat-section">
+                    <div class="chat-examples">
+                        <h4>Example Questions:</h4>
+                        <ul>
+                            <li>"What's the water usage at 123 Main Street?"</li>
+                            <li>"Which address has the highest meter reading?"</li>
+                            <li>"Show me all meters in downtown area"</li>
+                            <li>"Find addresses with similar usage patterns"</li>
+                        </ul>
+                    </div>
+                    <div class="chat-input">
+                        <input type="text" placeholder="Ask about meter readings..." disabled>
+                        <button disabled>Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="api-section">
+            <h2>🔧 API Information</h2>
+            <div class="api-links">
+                <a href="/health" class="api-link">Health Check</a><br>
+                <a href="/milvus/info" class="api-link">Milvus Info</a><br>
+                <a href="/bedrock/test-vision" class="api-link">Bedrock Test Vision</a><br>
+                <a href="/docs" class="api-link">API Documentation</a><br>
+                <a href="/redoc" class="api-link">ReDoc Documentation</a>
+            </div>
+        </div>
+
+        <footer>
+            <p>Water Meter Scanner v1.0.0</p>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

@@ -29,7 +29,7 @@ A web application for scanning home water usage counters using computer vision a
 
 1. **Clone and setup project:**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/AntonSheinin/water-meter-scanner
    cd water-meter-scanner
    ```
 
@@ -49,63 +49,27 @@ A web application for scanning home water usage counters using computer vision a
    - API docs: http://localhost:8000/docs
    - Milvus: http://localhost:19530
 
-### Development
-
-For development mode:
-```bash
-# Run only Milvus
-docker-compose up milvus-standalone
-
-# Run FastAPI locally
-cd app
-pip install -r requirements.txt
-uvicorn main:app --reload
-```
-
 ## Project Structure
 
 ```
 water-meter-scanner/
-├── docker-compose.yml          # Container orchestration
-├── app/                        # FastAPI application
-│   ├── Dockerfile             # Application container
-│   ├── requirements.txt       # Python dependencies
+├── docker-compose.yml        # Container orchestration
+├── app/                      # FastAPI application
+│   ├── Dockerfile            # Application container
+│   ├── requirements.txt      # Python dependencies
 │   ├── main.py               # FastAPI entry point
 │   ├── config/               # Configuration
 │   ├── services/             # Business logic services
 │   ├── models/               # Data models
 │   ├── api/                  # API routes
 │   └── static/               # Web UI files
-├── uploads/                   # Image storage (auto-created)
-└── logs/                     # Application logs (auto-created)
+├── README.md                 # This file
+└── .env                      # Environment variables
 ```
 
 ## API Endpoints
 
 - `GET /` - Web interface
-- `GET /health` - Health check
-- `POST /upload-meter` - Upload meter image (coming soon)
-- `POST /chat` - Chat with meter data (coming soon)
-
-## Development Status
-
-- [x] Phase 1.1: Project structure and Docker setup
-- [ ] Phase 1.2: Basic FastAPI application
-- [ ] Phase 1.3: Milvus connection and schema
-- [ ] Phase 2: Vision LLM integration
-- [ ] Phase 3: Embedding and storage
-- [ ] Phase 4: Query processing and chat
-- [ ] Phase 5: Web interface and testing
-
-## Contributing
-
-This is a prototype project. For development:
-
-1. Follow the project structure
-2. Add tests for new features
-3. Update documentation
-4. Use proper error handling
-
-## License
-
-[Your License Here]
+- `POST /upload-meter` - Upload meter image
+- `POST /chat` - Chat with meter data
+- `GET /docs` - API Documentation

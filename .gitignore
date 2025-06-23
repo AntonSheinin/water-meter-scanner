@@ -28,6 +28,11 @@ ENV/
 env.bak/
 venv.bak/
 
+# Environment files
+.env
+.env.local
+.env.*.local
+
 # IDE
 .vscode/
 .idea/
@@ -43,6 +48,10 @@ venv.bak/
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# Docker volumes and data
+volumes/
+data/
 
 # AWS
 .aws/
