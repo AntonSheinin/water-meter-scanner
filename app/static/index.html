@@ -20,26 +20,27 @@
                 <h3>📸 Upload Meter Images</h3>
                 <p>Upload photos of water meters with address information</p>
                 <div class="upload-form">
-                    <form id="uploadForm">
+                    <form id="uploadForm" enctype="multipart/form-data">
                         <div class="form-group">
                             <label for="image">Water Meter Image:</label>
-                            <input type="file" id="image" name="image" accept="image/*" disabled>
+                            <input type="file" id="image" name="image" accept="image/*" required>
                         </div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="city">City:</label>
-                                <input type="text" id="city" name="city" placeholder="e.g., New York" disabled>
+                                <input type="text" id="city" name="city" placeholder="e.g., New York" required>
                             </div>
                             <div class="form-group">
                                 <label for="street">Street Name:</label>
-                                <input type="text" id="street" name="street" placeholder="e.g., Main Street" disabled>
+                                <input type="text" id="street" name="street" placeholder="e.g., Main Street" required>
                             </div>
                             <div class="form-group">
                                 <label for="number">Street Number:</label>
-                                <input type="text" id="number" name="number" placeholder="e.g., 123" disabled>
+                                <input type="text" id="number" name="number" placeholder="e.g., 123" required>
                             </div>
                         </div>
-                        <button type="submit" disabled>Upload & Process</button>
+                        <button type="submit">Upload & Process</button>
+                        <div id="uploadResult" class="result-section"></div>
                     </form>
                 </div>
             </div>
@@ -68,10 +69,11 @@
         <div class="api-section">
             <h2>🔧 API Information</h2>
             <div class="api-links">
-                <a href="/health" class="api-link">Health Check</a><br>
-                <a href="/milvus/info" class="api-link">Milvus Info</a><br>
-                <a href="/bedrock/test-vision" class="api-link">Bedrock Test Vision</a><br>
-                <a href="/docs" class="api-link">API Documentation</a><br>
+                <a href="/health" class="api-link">Health Check</a>
+                <a href="/milvus/info" class="api-link">Milvus Info</a>
+                <a href="/readings" class="api-link">View Stored Readings</a>
+                <a href="/readings/with-vectors" class="api-link">View Stored Readings with vectors</a>
+                <a href="/docs" class="api-link">API Documentation</a>
                 <a href="/redoc" class="api-link">ReDoc Documentation</a>
             </div>
         </div>

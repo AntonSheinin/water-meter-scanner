@@ -1,0 +1,289 @@
+/* Water Meter Scanner - Basic Styling */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f8f9fa;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+/* Header */
+header {
+    text-align: center;
+    margin-bottom: 30px;
+    padding: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 10px;
+}
+
+header h1 {
+    font-size: 2.5em;
+    margin-bottom: 10px;
+}
+
+header p {
+    font-size: 1.2em;
+    opacity: 0.9;
+}
+
+/* Status Section */
+.status-section {
+    margin-bottom: 30px;
+}
+
+.status-card {
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+}
+
+.status-card.success {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.status-card h2 {
+    margin-bottom: 15px;
+    font-size: 1.5em;
+}
+
+/* Features Section */
+.features-section {
+    margin-bottom: 30px;
+}
+
+.features-section h2 {
+    margin-bottom: 20px;
+    color: #495057;
+    font-size: 1.8em;
+}
+
+.feature-card {
+    background: white;
+    padding: 25px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+}
+
+.feature-card h3 {
+    color: #667eea;
+    margin-bottom: 15px;
+    font-size: 1.3em;
+}
+
+.feature-card p {
+    margin-bottom: 20px;
+    color: #6c757d;
+}
+
+/* Form Styling */
+.upload-form {
+    margin-top: 20px;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr 1fr;
+    gap: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 500;
+    color: #495057;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.form-group input:disabled {
+    background-color: #e9ecef;
+    opacity: 0.6;
+}
+
+button {
+    background-color: #667eea;
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: background-color 0.3s;
+}
+
+button:hover:not(:disabled) {
+    background-color: #5a6fd8;
+}
+
+button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* Chat Section */
+.chat-section {
+    margin-top: 20px;
+}
+
+.chat-examples {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+}
+
+.chat-examples h4 {
+    margin-bottom: 10px;
+    color: #495057;
+}
+
+.chat-examples ul {
+    padding-left: 20px;
+}
+
+.chat-examples li {
+    margin-bottom: 5px;
+    color: #6c757d;
+}
+
+.chat-input {
+    display: flex;
+    gap: 10px;
+}
+
+.chat-input input {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid #ced4da;
+    border-radius: 4px;
+}
+
+.chat-input input:disabled {
+    background-color: #e9ecef;
+    opacity: 0.6;
+}
+
+/* API Section */
+.api-section {
+    margin-bottom: 30px;
+}
+
+.api-section h2 {
+    margin-bottom: 20px;
+    color: #495057;
+    font-size: 1.8em;
+}
+
+.api-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 15px;
+}
+
+.api-link {
+    display: block;
+    padding: 15px;
+    background: white;
+    color: #667eea;
+    text-decoration: none;
+    border-radius: 5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    text-align: center;
+    font-weight: 500;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.api-link:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    text-decoration: none;
+}
+
+/* Footer */
+footer {
+    text-align: center;
+    padding: 20px;
+    color: #6c757d;
+    border-top: 1px solid #dee2e6;
+    margin-top: 30px;
+}
+
+/* Upload Results */
+.result-section {
+    margin-top: 20px;
+    padding: 15px;
+    border-radius: 5px;
+    display: none;
+}
+
+.result-section.success {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+    display: block;
+}
+
+.result-section.error {
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+    display: block;
+}
+
+.result-section.loading {
+    background-color: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+    display: block;
+}
+
+.result-section h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .api-links {
+        grid-template-columns: 1fr;
+    }
+    
+    header h1 {
+        font-size: 2em;
+    }
+    
+    .container {
+        padding: 10px;
+    }
+}

@@ -73,13 +73,13 @@ class MilvusService:
                 FieldSchema(
                     name='address_embedding', 
                     dtype=DataType.FLOAT_VECTOR, 
-                    dim=384,
+                    dim=1024,
                     description='Address semantic embedding'
                 ),
                 FieldSchema(
                     name='combined_embedding', 
                     dtype=DataType.FLOAT_VECTOR, 
-                    dim=384,
+                    dim=1024,
                     description='Combined address + context embedding'
                 ),
                 FieldSchema(
@@ -184,15 +184,20 @@ class MilvusService:
 
         try:
             # Connect to Milvus
+            logger.info("Initializing Milvus service...")
+
             if not await self.connect():
+                logger.error("Failed to connect to Milvus")
                 return False
             
             # Create collection
             if not await self.create_collection():
+                logger.error("Failed to create collection")
                 return False
             
             # Create indexes
             if not await self.create_indexes():
+                logger.error("Failed to create indexes")
                 return False
             
             logger.info('Milvus service initialized successfully')
@@ -255,3 +260,55 @@ class MilvusService:
             
         except Exception as e:
             return {'status': 'error', 'error': str(e)}
+        
+    async def store_meter_reading(
+        self, 
+        reading_id: str,
+        address_info: dict,
+        meter_value: float,
+        confidence: float,
+        embeddings: dict,
+        timestamp: int,
+        units: str = "cubic_meters",
+        meter_type: str = "unknown"
+    ) -> bool:
+        """Store complete meter reading with embeddings in Milvus"""
+        try:
+            if not self.collection:
+                logger.error("Collection not available for storage")
+                return False
+            
+            # Prepare data for insertion
+            data = [
+                [reading_id],
+                [embeddings["address_embedding"]],
+                [embeddings["combined_embedding"]],
+                [meter_value],
+                [address_info.get("city", "")],
+                [address_info.get("street_name", "")],
+                [address_info.get("street_number", "")],
+                [embeddings["full_address"]],
+                [timestamp],
+                [confidence]
+            ]
+            
+            # Insert into Milvus
+            self.collection.insert(data)
+            self.collection.flush()
+            
+            logger.info(f"✅ Stored meter reading {reading_id} in Milvus")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to store meter reading: {str(e)}")
+            return False
+
+    async def search_by_address(self, query: str, limit: int = 10) -> list:
+        """Search meters by address similarity"""
+        # Will implement search in Step 4
+        return []
+
+    async def search_by_context(self, query: str, limit: int = 10) -> list:
+        """Search meters by combined context similarity"""
+        # Will implement search in Step 4
+        return []
