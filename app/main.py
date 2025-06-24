@@ -9,6 +9,10 @@ import logging
 from datetime import datetime
 import uuid
 import time
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv(override=True, verbose=True)
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -197,10 +201,49 @@ async def upload_meter_reading(
         logger.error(f"❌ Upload processing failed: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Processing failed: {str(e)}")
 
-@app.post("/chat")
-async def chat():
-    """Chat with meter data"""
-    raise HTTPException(status_code=501, detail="Not implemented")
+@app.post("/chat", response_model=ChatResponse)
+async def chat(query: ChatQuery):
+    """Chat with meter data using semantic search"""
+    try:
+        user_query = query.message.strip()
+        
+        if not user_query:
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
+        
+        # Check if services are available
+        if not bedrock_service.connected:
+            raise HTTPException(status_code=503, detail="AI service not available")
+        
+        if not milvus_service.collection:
+            raise HTTPException(status_code=503, detail="Database not available")
+        
+        # Determine search strategy based on query
+        context_results = []
+        
+        # Try context search first (for usage-related queries)
+        if any(word in user_query.lower() for word in ["usage", "high", "low", "consumption", "similar", "pattern"]):
+            context_results = await milvus_service.search_by_context(user_query, limit=5)
+        
+        # If no good context results, try address search
+        if not context_results or (context_results and context_results[0]["similarity_score"] > 0.8):
+            address_results = await milvus_service.search_by_address(user_query, limit=5)
+            # Combine results, prefer address results for location queries
+            if address_results:
+                context_results = address_results + context_results[:3]
+        
+        # Generate response using Bedrock
+        response_text = await bedrock_service.generate_chat_response(user_query, context_results)
+        
+        return ChatResponse(
+            response=response_text,
+            sources_count=len(context_results)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Chat processing failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Chat processing failed: {str(e)}")
 
 @app.get("/readings")
 async def get_recent_readings(limit: int = 20):

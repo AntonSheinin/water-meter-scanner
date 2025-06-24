@@ -4,12 +4,8 @@ services:
     container_name: water-meter-web
     ports:
       - "8000:8000"
-    environment:
-      - MILVUS_HOST=milvus-standalone
-      - MILVUS_PORT=19530
-      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
-      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
-      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    env_file:
+    - .env
     depends_on:
       - milvus-standalone
     restart: unless-stopped

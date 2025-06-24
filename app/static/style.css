@@ -287,3 +287,50 @@ footer {
         padding: 10px;
     }
 }
+
+/* Chat History */
+#chatHistory {
+    height: 300px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 15px;
+    margin-bottom: 15px;
+    background: white;
+    border-radius: 5px;
+}
+
+.chat-message {
+    margin-bottom: 15px;
+    padding: 10px;
+    border-radius: 8px;
+    max-width: 80%;
+}
+
+.chat-message.user {
+    background: #667eea;
+    color: white;
+    margin-left: auto;
+    text-align: right;
+}
+
+.chat-message.assistant {
+    background: #f1f3f4;
+    color: #333;
+    margin-right: auto;
+}
+
+.chat-message.error {
+    background: #fee;
+    color: #c33;
+    margin-right: auto;
+}
+
+.chat-message.loading {
+    background: #fff3cd;
+    color: #856404;
+    font-style: italic;
+}
+
+.message-content {
+    word-wrap: break-word;
+}

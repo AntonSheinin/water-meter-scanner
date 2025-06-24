@@ -11,11 +11,11 @@ logger = logging.getLogger(__name__)
 
 class BedrockService:
     def __init__(self):
-        self.region = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+        self.region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
         self.vision_model = os.getenv("BEDROCK_VISION_MODEL", "anthropic.claude-3-haiku-20240307-v1:0")
         self.text_model = os.getenv("BEDROCK_TEXT_MODEL", "anthropic.claude-v2")
         self.embed_model = os.getenv("BEDROCK_EMBED_MODEL", "amazon.titan-embed-text-v2:0")
-        
+
         # Initialize Bedrock client
         self.bedrock_runtime = None
         self.connected = False
@@ -49,6 +49,17 @@ class BedrockService:
             logger.error(f"❌ Failed to connect to AWS Bedrock: {str(e)}")
             self.connected = False
             return False
+        
+    async def search_similar_readings(self, query: str, search_type: str = "combined") -> list:
+        """Generate embedding for search query"""
+        try:
+            # Generate embedding for the search query
+            query_embedding = await self.generate_embedding(query)
+            return query_embedding
+            
+        except Exception as e:
+            logger.error(f"❌ Search embedding generation failed: {str(e)}")
+            raise
         
     async def generate_embedding(self, text: str) -> list:
         """Generate embedding using Bedrock Titan"""
@@ -390,12 +401,17 @@ class BedrockService:
                         Answer:
                     """
 
-            # Prepare request for Claude Text model
+            # Prepare request for Claude 3 (Messages API format)
             request_body = {
-                "prompt": f"\n\nHuman: {prompt}\n\nAssistant:",
-                "max_tokens_to_sample": 500,
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 500,
                 "temperature": 0.1,
-                "top_p": 0.9
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ]
             }
             
             # Call Bedrock Text API
@@ -404,11 +420,12 @@ class BedrockService:
                 body=json.dumps(request_body)
             )
             
-            # Parse response
+            # Parse response (Claude 3 format)
             response_body = json.loads(response['body'].read())
-            generated_text = response_body.get('completion', '').strip()
+            generated_text = response_body['content'][0]['text'].strip()
             
             logger.info(f"✅ Generated chat response for query: {query}")
+            logger.info(f"✅ Generated answer: {generated_text}")
             return generated_text
             
         except Exception as e:

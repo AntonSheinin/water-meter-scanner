@@ -1,5 +1,3 @@
-// Water Meter Scanner - Basic JavaScript
-
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Water Meter Scanner loaded');
     
@@ -74,25 +72,94 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    // Chat input handling (still disabled)
-    const chatInput = document.querySelector('.chat-input input');
-    const chatButton = document.querySelector('.chat-input button');
+    // Chat event listeners
+    const chatInput = document.getElementById('chatInput');
+    const chatSend = document.getElementById('chatSend');
     
-    if (chatInput && chatButton) {
+    if (chatInput && chatSend) {
         chatInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' && !chatInput.disabled) {
-                handleChatSubmit();
+            if (e.key === 'Enter' && chatInput.value.trim()) {
+                sendChatMessage();
             }
         });
         
-        chatButton.addEventListener('click', function() {
-            if (!chatButton.disabled) {
-                handleChatSubmit();
+        chatSend.addEventListener('click', function() {
+            if (chatInput.value.trim()) {
+                sendChatMessage();
             }
         });
     }
-    
-    function handleChatSubmit() {
-        alert('Chat functionality not yet implemented');
-    }
 });
+
+// GLOBAL CHAT FUNCTIONS (moved outside DOMContentLoaded)
+async function sendChatMessage() {
+    const chatInput = document.getElementById('chatInput');
+    const message = chatInput.value.trim();
+    console.log('Sending message:', message);
+    
+    if (!message) return;
+    
+    // Add user message to chat
+    addChatMessage(message, 'user');
+    
+    // Clear input and show loading
+    chatInput.value = '';
+    addChatMessage('Thinking...', 'assistant', true);
+    
+    try {
+        console.log('Making API call...');
+        const response = await fetch('/chat', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                message: message
+            })
+        });
+        
+        console.log('Response status:', response.status);
+        const result = await response.json();
+        console.log('Response data:', result);
+        
+        // Remove loading message
+        removeLastMessage();
+        
+        if (response.ok) {
+            addChatMessage(result.response, 'assistant');
+        } else {
+            addChatMessage(`Error: ${result.detail || 'Unknown error'}`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('Chat error:', error);
+        removeLastMessage();
+        addChatMessage(`Network error: ${error.message}`, 'error');
+    }
+}
+
+function addChatMessage(message, sender, isLoading = false) {
+    console.log('Adding message:', message, 'sender:', sender);
+    
+    const chatHistory = document.getElementById('chatHistory');
+    if (!chatHistory) {
+        console.error('chatHistory element not found!');
+        return;
+    }
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `chat-message ${sender} ${isLoading ? 'loading' : ''}`;
+    messageDiv.innerHTML = `<div class="message-content">${message}</div>`;
+    
+    chatHistory.appendChild(messageDiv);
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+}
+
+function removeLastMessage() {
+    const chatHistory = document.getElementById('chatHistory');
+    if (!chatHistory) return;
+    const lastMessage = chatHistory.querySelector('.loading');
+    if (lastMessage) {
+        lastMessage.remove();
+    }
+}

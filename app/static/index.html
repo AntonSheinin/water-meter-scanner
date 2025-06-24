@@ -58,9 +58,10 @@
                             <li>"Find addresses with similar usage patterns"</li>
                         </ul>
                     </div>
+                    <div id="chatHistory"></div>
                     <div class="chat-input">
-                        <input type="text" placeholder="Ask about meter readings..." disabled>
-                        <button disabled>Send</button>
+                        <input type="text" id="chatInput" placeholder="Ask about meter readings..." maxlength="500">
+                        <button id="chatSend">Send</button>
                     </div>
                 </div>
             </div>
@@ -72,7 +73,6 @@
                 <a href="/health" class="api-link">Health Check</a>
                 <a href="/milvus/info" class="api-link">Milvus Info</a>
                 <a href="/readings" class="api-link">View Stored Readings</a>
-                <a href="/readings/with-vectors" class="api-link">View Stored Readings with vectors</a>
                 <a href="/docs" class="api-link">API Documentation</a>
                 <a href="/redoc" class="api-link">ReDoc Documentation</a>
             </div>

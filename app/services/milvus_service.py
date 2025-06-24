@@ -3,6 +3,7 @@ import os
 import logging
 import time
 
+
 logger = logging.getLogger(__name__)
 
 class MilvusService:
@@ -305,10 +306,96 @@ class MilvusService:
 
     async def search_by_address(self, query: str, limit: int = 10) -> list:
         """Search meters by address similarity"""
-        # Will implement search in Step 4
-        return []
+        try:
+            if not self.collection:
+                return []
+            
+            self.collection.load()
+            
+            # This will be called from bedrock_service
+            from services.bedrock_service import BedrockService
+            bedrock = BedrockService()
+            if not bedrock.connected:
+                await bedrock.connect()
+            
+            # Generate query embedding
+            query_embedding = await bedrock.generate_embedding(query)
+            
+            # Search in address_embedding field
+            search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
+            results = self.collection.search(
+                [query_embedding],
+                "address_embedding",
+                search_params,
+                limit=limit,
+                output_fields=["id", "meter_value", "full_address", "confidence", "timestamp", "city", "street_name", "street_number"]
+            )
+            
+            # Format results
+            formatted_results = []
+            for result in results[0]:
+                formatted_results.append({
+                    "id": result.entity.get("id"),
+                    "meter_value": float(result.entity.get("meter_value")),
+                    "full_address": result.entity.get("full_address"),
+                    "confidence": float(result.entity.get("confidence")),
+                    "timestamp": int(result.entity.get("timestamp")),
+                    "city": result.entity.get("city"),
+                    "street_name": result.entity.get("street_name"),
+                    "street_number": result.entity.get("street_number"),
+                    "similarity_score": float(result.distance)
+                })
+            
+            return formatted_results
+            
+        except Exception as e:
+            logger.error(f"❌ Address search failed: {str(e)}")
+            return []
 
     async def search_by_context(self, query: str, limit: int = 10) -> list:
         """Search meters by combined context similarity"""
-        # Will implement search in Step 4
-        return []
+        try:
+            if not self.collection:
+                return []
+            
+            self.collection.load()
+            
+            # Import here to avoid circular imports
+            from services.bedrock_service import BedrockService
+            bedrock = BedrockService()
+            if not bedrock.connected:
+                await bedrock.connect()
+            
+            # Generate query embedding
+            query_embedding = await bedrock.generate_embedding(query)
+            
+            # Search in combined_embedding field
+            search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
+            results = self.collection.search(
+                [query_embedding],
+                "combined_embedding", 
+                search_params,
+                limit=limit,
+                output_fields=["id", "meter_value", "full_address", "confidence", "timestamp", "city", "street_name", "street_number"]
+            )
+            
+            # Format results
+            formatted_results = []
+            for result in results[0]:
+                formatted_results.append({
+                    "id": result.entity.get("id"),
+                    "meter_value": float(result.entity.get("meter_value")),
+                    "full_address": result.entity.get("full_address"),
+                    "confidence": float(result.entity.get("confidence")),
+                    "timestamp": int(result.entity.get("timestamp")),
+                    "city": result.entity.get("city"),
+                    "street_name": result.entity.get("street_name"),
+                    "street_number": result.entity.get("street_number"),
+                    "similarity_score": float(result.distance)
+                })
+            
+            return formatted_results
+            
+        except Exception as e:
+            logger.error(f"❌ Context search failed: {str(e)}")
+            return []
