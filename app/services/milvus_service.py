@@ -1,9 +1,15 @@
-from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
+"""
+    Milvus wrapper class
+"""
+
 import os
-import logging
 import time
+import logging
+
+from pymilvus import connections, Collection, FieldSchema, CollectionSchema, DataType, utility
 
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class MilvusService:
@@ -42,9 +48,11 @@ class MilvusService:
                 
             except Exception as exc:
                 logger.warning(f"Connection attempt {attempt + 1} failed: {str(exc)}")
+
                 if attempt < max_retries - 1:
                     logger.info(f"Retrying in {retry_delay} seconds...")
                     time.sleep(retry_delay)
+
                 else:
                     logger.error("All connection attempts failed")
                     self.connected = False
@@ -124,13 +132,11 @@ class MilvusService:
                 )
             ]
             
-            # Create schema
             schema = CollectionSchema(
                 fields=fields,
                 description='Water meter readings with multi-vector embeddings'
             )
             
-            # Create collection
             self.collection = Collection(
                 name=self.collection_name,
                 schema=schema
@@ -175,7 +181,7 @@ class MilvusService:
             return True
             
         except Exception as exc:
-            logger.error(f'Failed to create indexes: {str(e)}')
+            logger.error(f'Failed to create indexes: {str(exc)}')
             return False
     
     async def initialize(self) -> bool:
@@ -184,19 +190,16 @@ class MilvusService:
         """
 
         try:
-            # Connect to Milvus
             logger.info("Initializing Milvus service...")
 
             if not await self.connect():
                 logger.error("Failed to connect to Milvus")
                 return False
             
-            # Create collection
             if not await self.create_collection():
                 logger.error("Failed to create collection")
                 return False
             
-            # Create indexes
             if not await self.create_indexes():
                 logger.error("Failed to create indexes")
                 return False
@@ -217,7 +220,6 @@ class MilvusService:
             return None
         
         try:
-            # Load collection to get stats
             self.collection.load()
             
             return {
@@ -235,6 +237,7 @@ class MilvusService:
                     ]
                 }
             }
+        
         except Exception as exc:
             logger.error(f'Failed to get collection info: {str(exc)}')
             return None
@@ -248,7 +251,6 @@ class MilvusService:
             if not self.connected:
                 return {'status': 'disconnected', 'error': 'Not connected to Milvus'}
             
-            # Test connection by listing collections
             collections = utility.list_collections()
             
             return {
@@ -259,8 +261,8 @@ class MilvusService:
                 'collection_exists': self.collection_name in collections
             }
             
-        except Exception as e:
-            return {'status': 'error', 'error': str(e)}
+        except Exception as exc:
+            return {'status': 'error', 'error': str(exc)}
         
     async def store_meter_reading(
         self, 
@@ -273,7 +275,10 @@ class MilvusService:
         units: str = "cubic_meters",
         meter_type: str = "unknown"
     ) -> bool:
-        """Store complete meter reading with embeddings in Milvus"""
+        """
+            Store complete meter reading with embeddings in Milvus
+        """
+
         try:
             if not self.collection:
                 logger.error("Collection not available for storage")
@@ -300,21 +305,24 @@ class MilvusService:
             logger.info(f"✅ Stored meter reading {reading_id} in Milvus")
             return True
             
-        except Exception as e:
-            logger.error(f"❌ Failed to store meter reading: {str(e)}")
+        except Exception as exc:
+            logger.error(f"❌ Failed to store meter reading: {str(exc)}")
             return False
 
     async def search_by_address(self, query: str, limit: int = 10) -> list:
-        """Search meters by address similarity"""
+        """
+            Search meters by address similarity
+        """
+
         try:
             if not self.collection:
                 return []
             
             self.collection.load()
             
-            # This will be called from bedrock_service
             from services.bedrock_service import BedrockService
             bedrock = BedrockService()
+
             if not bedrock.connected:
                 await bedrock.connect()
             
@@ -333,6 +341,7 @@ class MilvusService:
             
             # Format results
             formatted_results = []
+
             for result in results[0]:
                 formatted_results.append({
                     "id": result.entity.get("id"),
@@ -353,20 +362,22 @@ class MilvusService:
             return []
 
     async def search_by_context(self, query: str, limit: int = 10) -> list:
-        """Search meters by combined context similarity"""
+        """
+            Search meters by combined context similarity
+        """
+
         try:
             if not self.collection:
                 return []
             
             self.collection.load()
             
-            # Import here to avoid circular imports
             from services.bedrock_service import BedrockService
             bedrock = BedrockService()
+
             if not bedrock.connected:
                 await bedrock.connect()
             
-            # Generate query embedding
             query_embedding = await bedrock.generate_embedding(query)
             
             # Search in combined_embedding field
@@ -396,6 +407,6 @@ class MilvusService:
             
             return formatted_results
             
-        except Exception as e:
-            logger.error(f"❌ Context search failed: {str(e)}")
+        except Exception as exc:
+            logger.error(f"❌ Context search failed: {str(exc)}")
             return []

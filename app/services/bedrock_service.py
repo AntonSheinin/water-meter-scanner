@@ -1,12 +1,17 @@
-import boto3
-import json
-import base64
-import logging
+"""
+    Bedrock wrapper class
+"""
+
 import os
 import re
-from PIL import Image, ImageEnhance
 import io
+import json
+import boto3
+import base64
+import logging
 
+
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class BedrockService:
@@ -20,8 +25,11 @@ class BedrockService:
         self.bedrock_runtime = None
         self.connected = False
     
-    async def connect(self):
-        """Initialize Bedrock runtime client"""
+    async def connect(self) -> bool:
+        """
+            Initialize Bedrock runtime client
+        """
+
         try:
             self.bedrock_runtime = boto3.client(
                 'bedrock-runtime',
@@ -36,43 +44,46 @@ class BedrockService:
                 region_name=self.region,
                 aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
                 aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
-            )
-            
-            models = bedrock_client.list_foundation_models()
+            )            
+
             logger.info(f"✅ Connected to AWS Bedrock in {self.region}")
-            logger.info(f"Available models: {len(models.get('modelSummaries', []))}")
             
             self.connected = True
             return True
             
-        except Exception as e:
-            logger.error(f"❌ Failed to connect to AWS Bedrock: {str(e)}")
+        except Exception as exc:
+            logger.error(f"❌ Failed to connect to AWS Bedrock: {str(exc)}")
             self.connected = False
             return False
         
-    async def search_similar_readings(self, query: str, search_type: str = "combined") -> list:
-        """Generate embedding for search query"""
+    async def search_similar_readings(self, query: str) -> list:
+        """
+            Generate embedding for search query
+        """
+
         try:
             # Generate embedding for the search query
             query_embedding = await self.generate_embedding(query)
             return query_embedding
             
-        except Exception as e:
-            logger.error(f"❌ Search embedding generation failed: {str(e)}")
+        except Exception as exc:
+            logger.error(f"❌ Search embedding generation failed: {str(exc)}")
             raise
         
     async def generate_embedding(self, text: str) -> list:
-        """Generate embedding using Bedrock Titan"""
+        """
+            Generate embedding
+        """
+
         try:
             if not self.connected:
                 raise Exception("Bedrock service not connected")
             
-            # Prepare request for Titan Embeddings
             request_body = {
                 "inputText": text
             }
             
-            # Call Bedrock Embeddings API
+            # Call Bedrock Embeddings
             response = self.bedrock_runtime.invoke_model(
                 modelId=self.embed_model,
                 body=json.dumps(request_body)
@@ -88,12 +99,14 @@ class BedrockService:
             logger.info(f"✅ Generated embedding for text: {text[:50]}...")
             return embedding
             
-        except Exception as e:
-            logger.error(f"❌ Embedding generation failed: {str(e)}")
+        except Exception as exc:
+            logger.error(f"❌ Embedding generation failed: {str(exc)}")
             raise
 
     async def generate_meter_embeddings(self, address_info: dict, meter_value: float, units: str) -> dict:
-        """Generate both address and combined embeddings for meter reading"""
+        """
+            Generate both address and combined embeddings for meter reading
+        """
         
         # Create address text
         full_address = f"{address_info.get('street_number', '')} {address_info.get('street_name', '')}, {address_info.get('city', '')}"
@@ -112,9 +125,13 @@ class BedrockService:
         }
             
     def _preprocess_image(self, image_bytes: bytes) -> bytes:
-        """Enhance image quality for better OCR results"""
+        """
+            Enhance image quality for better OCR results
+        """
+
+        from PIL import Image, ImageEnhance
+        
         try:
-            # Load image
             image = Image.open(io.BytesIO(image_bytes))
             
             # Convert to RGB if needed
@@ -128,45 +145,42 @@ class BedrockService:
             
             # Enhance contrast
             contrast_enhancer = ImageEnhance.Contrast(image)
-            image = contrast_enhancer.enhance(1.2)  # Slightly increase contrast
+            image = contrast_enhancer.enhance(1.2)
             
             # Enhance sharpness
             sharpness_enhancer = ImageEnhance.Sharpness(image)
-            image = sharpness_enhancer.enhance(1.1)  # Slightly sharpen
+            image = sharpness_enhancer.enhance(1.1)
             
             # Save back to bytes
             output = io.BytesIO()
             image.save(output, format='JPEG', quality=95)
             return output.getvalue()
             
-        except Exception as e:
-            logger.warning(f"Image preprocessing failed: {str(e)}, using original image")
+        except Exception as exc:
+            logger.warning(f"Image preprocessing failed: {str(exc)}, using original image")
             return image_bytes
     
     def _encode_image(self, image_bytes: bytes) -> str:
-        """Encode image bytes to base64 string"""
+        """
+            Encode image bytes to base64 string
+        """
+
         return base64.b64encode(image_bytes).decode('utf-8')
     
-    async def analyze_meter_image(self, image_bytes: bytes, address_info: dict) -> dict:
+    async def analyze_meter_image(self, image_bytes: bytes, address_info: dict, preprocess: bool = False) -> dict:
         """
-        Analyze water meter image using Claude Vision to extract meter reading
-        
-        Args:
-            image_bytes: Raw image data
-            address_info: Dictionary with city, street_name, street_number
-            
-        Returns:
-            Dictionary with meter_value, confidence, and metadata
+            Analyze water meter image using vision model to extract meter reading
         """
         try:
             if not self.connected:
                 raise Exception("Bedrock service not connected")
             
             # Preprocess image for better recognition
-            processed_image_bytes = self._preprocess_image(image_bytes)
+            if preprocess:
+                image_bytes = self._preprocess_image(image_bytes)
 
             # Encode image
-            image_base64 = self._encode_image(processed_image_bytes)
+            image_base64 = self._encode_image(image_bytes)
             
             # Create structured prompt for meter reading extraction
             full_address = f"{address_info.get('street_number', '')} {address_info.get('street_name', '')}, {address_info.get('city', '')}"
@@ -205,12 +219,12 @@ class BedrockService:
 
                         OUTPUT (strictly this JSON):
                         {{
-                            "meter_value": [the actual reading as a number],
-                            "confidence": [0.0 to 1.0 based on image clarity],
+                            "meter_value": "should be a float number representing the reading",
+                            "confidence": "0.0 to 1.0 based on image clarity",
                             "meter_type": "analog|digital|mechanical|unclear",
                             "units": "cubic_meters|gallons|liters",
                             "notes": "Description of what you see and why you chose this reading",
-                            "reading_visible": true|false
+                            "reading_visible": "true|false"
                         }}
                         
                         IMPORTANT: 
@@ -220,8 +234,7 @@ class BedrockService:
                         BE VERY CAREFUL with dial positions. If a pointer is between two number - get a lower number
                     """
 
-
-            # Prepare request body for Claude Vision
+            # Prepare request body for vision model
             request_body = {
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": 1000,
@@ -247,7 +260,7 @@ class BedrockService:
                 ]
             }
 
-            # Call Bedrock Vision API
+            # Call Bedrock vision model
             response = self.bedrock_runtime.invoke_model(
                 modelId=self.vision_model,
                 body=json.dumps(request_body)
@@ -318,8 +331,8 @@ class BedrockService:
                 logger.info(f"✅ Successfully extracted meter reading: {result['meter_value']} (confidence: {result['confidence']})")
                 return result
                 
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.error(f"Failed to parse vision model response: {str(e)}")
+            except (json.JSONDecodeError, ValueError) as exc:
+                logger.error(f"Failed to parse vision model response: {str(exc)}")
                 logger.error(f"Raw response: {content}")
                 
                 # Try to extract meter value using regex as fallback
@@ -347,43 +360,36 @@ class BedrockService:
                     "confidence": confidence,
                     "meter_type": "unknown",
                     "units": "unknown",
-                    "notes": f"JSON parsing failed, used text extraction. Original error: {str(e)}",
+                    "notes": f"JSON parsing failed, used text extraction. Original error: {str(exc)}",
                     "reading_visible": meter_value > 0,
                     "address": full_address,
                     "model_used": self.vision_model,
                     "raw_response": content
                 }
                 
-        except Exception as e:
-            logger.error(f"❌ Vision analysis failed: {str(e)}")
+        except Exception as exc:
+            logger.error(f"❌ Vision analysis failed: {str(exc)}")
             return {
                 "meter_value": 0.0,
                 "confidence": 0.0,
                 "meter_type": "unknown",
                 "units": "unknown", 
-                "notes": f"Analysis failed: {str(e)}",
+                "notes": f"Analysis failed: {str(exc)}",
                 "reading_visible": False,
                 "address": address_info,
                 "model_used": self.vision_model,
-                "error": str(e)
+                "error": str(exc)
             }
     
     async def generate_chat_response(self, query: str, context_data: list) -> str:
         """
-        Generate chat response using Claude Text model
-        
-        Args:
-            query: User's question
-            context_data: List of relevant meter readings
-            
-        Returns:
-            Generated response string
+            Generate chat response using text model
         """
+
         try:
             if not self.connected:
                 raise Exception("Bedrock service not connected")
             
-            # Format context data
             context = self._format_context_for_chat(context_data)
             
             # Create prompt for chat response
@@ -414,17 +420,17 @@ class BedrockService:
                 ]
             }
             
-            # Call Bedrock Text API
+            # Call Bedrock text model
             response = self.bedrock_runtime.invoke_model(
                 modelId=self.text_model,
                 body=json.dumps(request_body)
             )
             
-            # Parse response (Claude 3 format)
+            # Parse response
             response_body = json.loads(response['body'].read())
             generated_text = response_body['content'][0]['text'].strip()
             
-            logger.info(f"✅ Generated chat response for query: {query}")
+            logger.info(f"✅ Chat response generated for query: {query}")
             logger.info(f"✅ Generated answer: {generated_text}")
             return generated_text
             
@@ -433,11 +439,15 @@ class BedrockService:
             return f"Sorry, I encountered an error generating a response: {str(e)}"
     
     def _format_context_for_chat(self, context_data: list) -> str:
-        """Format context data for chat prompt"""
+        """
+            Format context data for chat prompt
+        """
+
         if not context_data:
             return "No meter readings available."
         
         formatted = "Available meter readings:\n"
+
         for i, item in enumerate(context_data[:10], 1):  # Limit to top 10
             address = item.get('full_address', 'Unknown address')
             value = item.get('meter_value', 'Unknown')
@@ -446,7 +456,10 @@ class BedrockService:
         return formatted
     
     def health_check(self) -> dict:
-        """Check Bedrock service health"""
+        """
+            Check Bedrock service health
+        """
+
         try:
             if not self.connected:
                 return {
@@ -459,15 +472,19 @@ class BedrockService:
                 "connected": True,
                 "region": self.region,
                 "vision_model": self.vision_model,
-                "text_model": self.text_model
+                "text_model": self.text_model,
+                "embed_model": self.embed_model
             }
             
-        except Exception as e:
+        except Exception as exc:
             return {
                 "status": "error",
-                "error": str(e)
+                "error": str(exc)
             }
     
     async def initialize(self) -> bool:
-        """Initialize the Bedrock service"""
+        """
+            Initialize the Bedrock service
+        """
+
         return await self.connect()

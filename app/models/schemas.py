@@ -1,15 +1,27 @@
-from pydantic import BaseModel, Field
+"""
+    Pydantic schemas
+"""
+
 from typing import Optional
 from datetime import datetime
 
+from pydantic import BaseModel, Field
+
+
 class AddressInfo(BaseModel):
-    """Address information for water meter location"""
+    """
+        Address information for water meter location
+    """
+
     city: str = Field(..., min_length=1, max_length=100, description="City name")
     street_name: str = Field(..., min_length=1, max_length=200, description="Street name")
     street_number: str = Field(..., min_length=1, max_length=20, description="Street number")
 
 class MeterReading(BaseModel):
-    """Water meter reading data"""
+    """
+        Water meter reading data
+    """
+
     id: str = Field(..., description="Unique reading ID")
     address: AddressInfo
     meter_value: float = Field(..., ge=0, description="Meter reading value")
@@ -20,7 +32,10 @@ class MeterReading(BaseModel):
     notes: Optional[str] = Field(None, description="Additional observations")
 
 class UploadResponse(BaseModel):
-    """Response from meter image upload"""
+    """
+        Response from meter image upload
+    """
+
     success: bool
     reading_id: str
     meter_value: float
@@ -31,16 +46,24 @@ class UploadResponse(BaseModel):
     error: Optional[str] = None
 
 class ChatQuery(BaseModel):
-    """Chat query request"""
+    """
+        Chat query request
+    """
+
     message: str = Field(..., min_length=1, max_length=500, description="User question")
 
 class ChatResponse(BaseModel):
-    """Chat response"""
+    """
+        Chat response
+    """
+
     response: str = Field(..., description="Generated response")
     sources_count: Optional[int] = Field(None, description="Number of sources used")
 
 class VisionAnalysisResult(BaseModel):
-    """Result from vision LLM analysis"""
+    """
+        Result from vision analysis
+    """
     meter_value: float
     confidence: float
     meter_type: str
