@@ -14,7 +14,7 @@ A web application for scanning home water usage counters using computer vision a
 - **Backend**: FastAPI
 - **Database**: Milvus 2.5 (vector database)
 - **AI**: AWS Bedrock (Vision LLM + Text LLM)
-- **Embeddings**: sentence-transformers
+- **Embeddings**: AWS Titan
 - **Deployment**: Docker & Docker Compose
 
 ## Quick Start
@@ -49,27 +49,13 @@ A web application for scanning home water usage counters using computer vision a
    - API docs: http://localhost:8000/docs
    - Milvus: http://localhost:19530
 
-## Project Structure
-
-```
-water-meter-scanner/
-├── docker-compose.yml        # Container orchestration
-├── app/                      # FastAPI application
-│   ├── Dockerfile            # Application container
-│   ├── requirements.txt      # Python dependencies
-│   ├── main.py               # FastAPI entry point
-│   ├── config/               # Configuration
-│   ├── services/             # Business logic services
-│   ├── models/               # Data models
-│   ├── api/                  # API routes
-│   └── static/               # Web UI files
-├── README.md                 # This file
-└── .env                      # Environment variables
-```
-
 ## API Endpoints
 
 - `GET /` - Web interface
 - `POST /upload-meter` - Upload meter image
 - `POST /chat` - Chat with meter data
+- `GET /health` - Services health check
+- `GET /milvus-info` - Milvus collection info
+- `GET /readings` - Stored readings
 - `GET /docs` - API Documentation
+- `GET /redocs` - ReDoc Documentation
