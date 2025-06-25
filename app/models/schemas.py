@@ -5,7 +5,34 @@
 from typing import Optional
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
+
+
+class MeterUploadData(BaseModel):
+    """
+        Validated upload data
+    """
+
+    city: str = Field(..., min_length=1, max_length=100)
+    street_name: str = Field(..., min_length=1, max_length=200)
+    street_number: str = Field(..., min_length=1, max_length=20)
+    file_content: bytes
+    file_name: str
+    content_type: str
+    
+    @validator('city', 'street_name', 'street_number')
+    def strip_fields(cls, v):
+        return v.strip() if isinstance(v, str) else v
+    
+    @validator('file_content')
+    def validate_file_content(cls, v):
+        if len(v) == 0:
+            raise ValueError("Empty file")
+        
+        if len(v) > 10 * 1024 * 1024:
+            raise ValueError("File too large")
+        
+        return v
 
 
 class AddressInfo(BaseModel):

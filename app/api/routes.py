@@ -8,14 +8,13 @@ import time
 import logging
 from datetime import datetime
 
+from fastapi import HTTPException, APIRouter, Depends
 from fastapi.responses import HTMLResponse, FileResponse
-from fastapi import HTTPException, File, UploadFile, Form, APIRouter, Depends
 
 from api.utils import convert_milvus_result
-from services.milvus_service import MilvusService
-from services.bedrock_service import BedrockService
-from models.schemas import UploadResponse, ChatQuery, ChatResponse
-from api.dependencies import get_milvus_service, get_bedrock_service
+from services.search_service import search_by_address, search_by_context, search_similar_readings, search_by_recency
+from api.dependencies import create_upload_data, get_bedrock_service, get_milvus_service
+from models.schemas import UploadResponse, ChatQuery, ChatResponse, MeterUploadData
 
 
 router = APIRouter()
@@ -31,135 +30,113 @@ async def root() -> HTMLResponse:
 
     static_file_path = os.path.join("static", "index.html")
 
-    if os.path.exists(static_file_path):
-        return FileResponse(static_file_path)
-    
-    else:
-        return HTMLResponse("""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Water Meter Scanner</title>
-            <style>
-                body { font-family: Arial, sans-serif; margin: 40px; }
-                .container { max-width: 800px; margin: 0 auto; }
-                h1 { color: #333; }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>Water Meter Scanner</h1>
-                <p>AI-powered water meter reading extraction and analysis</p>
-                <h3>Available:</h3>
-                <ul>
-                    <li><a href="/docs">API Documentation</a></li>
-                </ul>
-            </div>
-        </body>
-        </html>
-    """)
+    return FileResponse(static_file_path) if os.path.exists(static_file_path) else HTMLResponse(
+        """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Water Meter Scanner</title>
+                <style>
+                    body { font-family: Arial, sans-serif; margin: 40px; }
+                    .container { max-width: 800px; margin: 0 auto; }
+                    h1 { color: #333; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Water Meter Scanner</h1>
+                    <p>AI-powered water meter reading extraction and analysis</p>
+                    <h3>Available:</h3>
+                    <ul>
+                        <li><a href="/docs">API Documentation</a></li>
+                    </ul>
+                </div>
+            </body>
+            </html>
+        """
+    )
     
 @router.get("/health")
 async def health_check(
-    milvus_service: MilvusService = Depends(get_milvus_service),
-    bedrock_service: BedrockService = Depends(get_bedrock_service)
-) -> dict:
+        milvus_service = Depends(get_milvus_service),
+        bedrock_service = Depends(get_bedrock_service)
+    ) -> dict:
     """
         Health check endpoint
     """
 
-    milvus_health = milvus_service.health_check()
-    bedrock_health = bedrock_service.health_check()
-
     return {
         "status": "healthy",
-        "milvus": milvus_health,
-        "bedrock": bedrock_health
+        "milvus": milvus_service.health_check(),
+        "bedrock": bedrock_service.health_check()
     }
 
 @router.get("/milvus-info")
-async def milvus_info(milvus_service: MilvusService = Depends(get_milvus_service)) -> dict:
+async def milvus_info(
+        milvus_service = Depends(get_milvus_service),
+    ) -> dict:
     """
         Get Milvus collection information
     """
 
     info = milvus_service.get_collection_info()
 
-    if info:
-        return info
-    
-    else:
-        raise HTTPException(status_code=503, detail="Milvus not initialized")
+    return info if info else HTTPException(status_code=503, detail="Milvus not initialized")
     
 @router.post("/upload-meter", response_model=UploadResponse)
 async def upload_meter_reading(
-    file: UploadFile = File(..., description="Water meter image"),
-    city: str = Form(..., description="City name"),
-    street_name: str = Form(..., description="Street name"), 
-    street_number: str = Form(..., description="Street number"),
-    milvus_service: MilvusService = Depends(get_milvus_service),
-    bedrock_service: BedrockService = Depends(get_bedrock_service)
-) -> UploadResponse:
+        upload_data: MeterUploadData = Depends(create_upload_data),
+        milvus_service = Depends(get_milvus_service),
+        bedrock_service = Depends(get_bedrock_service)
+    ) -> UploadResponse:
     """
         Upload water meter image and extract reading using vision model
     """
     
-    try:
-        # Validate file type
-        if not file.content_type or not file.content_type.startswith('image/'):
-            raise HTTPException(status_code=400, detail="File must be an image")
-        
-        # Validate file size (max 10MB)
-        file_size = 0
-        file_content = await file.read()
-        file_size = len(file_content)
-        
-        if file_size > 10 * 1024 * 1024:  # 10MB
-            raise HTTPException(status_code=400, detail="File size must be less than 10MB")
-        
-        if file_size == 0:
-            raise HTTPException(status_code=400, detail="Empty file")
-        
-        # Prepare address information
-        address_info = {
-            "city": city.strip(),
-            "street_name": street_name.strip(),
-            "street_number": street_number.strip()
-        }
-        
-        # Validate address info
-        if not all(address_info.values()):
-            raise HTTPException(status_code=400, detail="All address fields are required")
-        
-        # Check if Bedrock service is available
-        if not bedrock_service.connected:
+    address_info = {
+        "city": upload_data.city,
+        "street_name": upload_data.street_name,
+        "street_number": upload_data.street_number
+    }
+
+    if not bedrock_service.connected:
             raise HTTPException(status_code=503, detail="Bedrock service not available")
         
-        logger.info(f"Processing meter image upload for {address_info}")
-        
-        # Analyze image using Vision LLM
-        vision_result = await bedrock_service.analyze_meter_image(file_content, address_info)
-        
-        # Check if analysis was successful
-        if not vision_result or not isinstance(vision_result, dict):
-            raise HTTPException(status_code=500, detail="Vision analysis failed to return valid results")
+    logger.info(f"Processing meter image upload for {address_info}")
 
-        # Check confidence
-        if not vision_result.get("reading_visible", False) and vision_result.get("confidence", 0) < 0.3:
-            logger.warning(f"Low confidence reading: {vision_result}")
+    try:        
+        # Analyze image using Vision LLM
+        vision_result = await bedrock_service.analyze_meter_image(upload_data.file_content, address_info)
+
+    except Exception as exc:
+        logger.error(f"❌ Bedrock vision analysis failed: {exc}")
+        raise HTTPException(status_code=500, detail="Vision analysis failed")
         
-        # Generate unique ID for this reading
-        reading_id = f"meter_{int(time.time())}_{str(uuid.uuid4())[:8]}"
-        
-        # Create full address string
-        full_address = f"{street_number} {street_name}, {city}"
-        
+    # Check if analysis was successful
+    if not vision_result or not isinstance(vision_result, dict):
+        raise HTTPException(status_code=500, detail="Vision analysis failed to return valid results")
+
+    # Check confidence
+    if not vision_result.get("reading_visible", False) and vision_result.get("confidence", 0) < 0.3:
+        logger.warning(f"Low confidence reading: {vision_result}")
+    
+    # Generate unique ID for this reading
+    reading_id = f"meter_{int(time.time())}_{str(uuid.uuid4())[:8]}"
+    
+    # Create full address string
+    full_address = f"{upload_data.street_number} {upload_data.street_name}, {upload_data.city}"
+    
+    try:
         embeddings = await bedrock_service.generate_meter_embeddings(
             address_info, 
             vision_result["meter_value"], 
             vision_result.get("units", "cubic_meters")
         )
+    except:
+        logger.error(f"❌ Embedding generation failed: {exc}")
+        raise HTTPException(status_code=500, detail="Embedding generation failed")
 
+    try:
         # Store in Milvus
         timestamp = int(time.time())
         stored = await milvus_service.store_meter_reading(
@@ -175,92 +152,119 @@ async def upload_meter_reading(
 
         if not stored:
             logger.warning("Failed to store reading in Milvus, but extraction succeeded")
-
-        logger.info(f"✅ Successfully extracted meter reading: {vision_result['meter_value']} at {full_address}")
-        
-        # Return successful response
-        return UploadResponse(
-            success=True,
-            reading_id=reading_id,
-            meter_value=vision_result["meter_value"],
-            confidence=vision_result["confidence"],
-            address=full_address,
-            timestamp=datetime.now(),
-            notes=vision_result.get("notes", "")
-        )
-        
-    except HTTPException:
-        raise 
     
     except Exception as exc:
-        logger.error(f"❌ Upload processing failed: {str(exc)}")
-        raise HTTPException(status_code=500, detail=f"Processing failed: {str(exc)}")
+        logger.error(f"❌ Failed to store reading in Milvus: {exc}")  
+        raise HTTPException(status_code=500, detail=f"❌ Failed to store reading in Milvus: {exc}")   
+
+    logger.info(f"✅ Successfully extracted meter reading: {vision_result['meter_value']} at {full_address}")
+        
+    # Return successful response
+    return UploadResponse(
+        success=True,
+        reading_id=reading_id,
+        meter_value=vision_result["meter_value"],
+        confidence=vision_result["confidence"],
+        address=full_address,
+        timestamp=datetime.now(),
+        notes=vision_result.get("notes", "")
+    )
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
-    query: ChatQuery,
-    milvus_service: MilvusService = Depends(get_milvus_service),
-    bedrock_service: BedrockService = Depends(get_bedrock_service)
+        query: ChatQuery,
+        milvus_service = Depends(get_milvus_service),
+        bedrock_service = Depends(get_bedrock_service)
     ) -> ChatResponse:
     """
         Chat with meter data using semantic search
     """
 
-    try:
-        user_query = query.message.strip()
+    user_query = query.message.strip()
         
-        if not user_query:
-            raise HTTPException(status_code=400, detail="Query cannot be empty")
-        
-        # Check if services are available
-        if not bedrock_service.connected:
-            raise HTTPException(status_code=503, detail="AI service not available")
-        
-        if not milvus_service.collection:
-            raise HTTPException(status_code=503, detail="Database not available")
-        
-        # Determine search strategy based on query
-        context_results = []
-        
-        # Try context search first (for usage-related queries)
-        if any(word in user_query.lower() for word in ["usage", "high", "low", "consumption", "similar", "pattern"]):
-            context_results = await milvus_service.search_by_context(user_query, limit=5)
-        
-        # If no good context results, try address search
-        if not context_results or (context_results and context_results[0]["similarity_score"] > 0.8):
-            address_results = await milvus_service.search_by_address(user_query, limit=5)
-            # Combine results, prefer address results for location queries
-            if address_results:
-                context_results = address_results + context_results[:3]
-        
-        # Generate response using Bedrock
-        response_text = await bedrock_service.generate_chat_response(user_query, context_results)
-        
-        return ChatResponse(
-            response=response_text,
-            sources_count=len(context_results)
-        )
-        
-    except HTTPException:
-        raise
+    if not user_query:
+        raise HTTPException(status_code=400, detail="Query cannot be empty")
+    
+    # Check if services are available
+    if not bedrock_service.connected:
+        raise HTTPException(status_code=503, detail="bedrock service not available")
+    
+    if not milvus_service.collection:
+        raise HTTPException(status_code=503, detail="milvus service not available")
+    
+    # Determine search strategy based on query
+    context_results = []
+    user_query_lower = user_query.lower()
 
-    except Exception as exc:
-        logger.error(f"❌ Chat processing failed: {str(exc)}")
-        raise HTTPException(status_code=500, detail=f"Chat processing failed: {str(exc)}")
+    # Check for time-based queries
+    if any(word in user_query_lower for word in ["last", "latest", "recent", "newest", "most recent"]):
+        context_results = await search_by_recency(milvus_service, user_query, limit=5)
+        logger.info(f"Using recency search for query: {user_query}")
+        
+    # Check for usage-related queries
+    elif any(word in user_query_lower for word in ["usage", "high", "low", "consumption", "similar", "pattern", "highest", "lowest"]):
+        context_results = await search_by_context(milvus_service, bedrock_service, user_query, limit=5)
+        logger.info(f"Using context search for query: {user_query}")
+        
+    # Check for location-based queries
+    elif any(word in user_query_lower for word in ["address", "street", "city", "location", "where", "at"]):
+        context_results = await search_by_address(milvus_service, bedrock_service, user_query, limit=5)
+        logger.info(f"Using address search for query: {user_query}")
+        
+    # Default: Use general similarity search from bedrock_service
+    else:
+        context_results = await search_similar_readings(
+            milvus_service, 
+            bedrock_service,
+            user_query, 
+            search_type="combined",  # Search combined embeddings for general queries
+            limit=5
+        )
+        logger.info(f"Using general similarity search for query: {user_query}")
+    
+    # If no results found, try broader search
+    if not context_results:
+        logger.warning(f"No results found for query '{user_query}', trying broader search")
+        context_results = await search_similar_readings(
+            milvus_service,
+            bedrock_service,
+            user_query, 
+            search_type="address",  # Try address-only search as fallback
+            limit=10
+        )
+    
+    # If still no results, get recent readings as context
+    if not context_results:
+        logger.warning("No similar results found, using recent readings as context")
+        context_results = await search_by_recency(milvus_service, "", limit=5)
+    
+    # Log search results for debugging
+    logger.info(f"Found {len(context_results)} context results for chat query")
+    for i, result in enumerate(context_results[:3]):  # Log first 3 results
+        logger.info(f"Result {i+1}: {result.get('full_address')} - {result.get('meter_value')} (similarity: {result.get('similarity_score', 'N/A')})")
+    
+    
+    # Generate response using Bedrock
+    response_text = await bedrock_service.generate_chat_response(user_query, context_results)
+    
+    return ChatResponse(
+        response=response_text,
+        sources_count=len(context_results)
+    )
 
 @router.get("/readings")
 async def get_readings_with_vectors(
-    limit: int = 20, 
-    milvus_service: MilvusService = Depends(get_milvus_service)
+        limit: int = 20, 
+        milvus_service = Depends(get_milvus_service),
     ) -> dict:
     """
         Get readings including vector field info
     """
 
-    try:
-        if not milvus_service.collection:
+    if not milvus_service.collection:
             raise HTTPException(status_code=503, detail="Milvus not available")
-        
+
+    try:
         milvus_service.collection.load()
         
         results = milvus_service.collection.query(
@@ -268,28 +272,30 @@ async def get_readings_with_vectors(
             output_fields=["id", "meter_value", "full_address", "confidence", "address_embedding", "combined_embedding"],
             limit=limit
         )
-        
-        serializable_results = []
-
-        for result in results:
-            converted = convert_milvus_result(result)
-            # Add vector info without showing full arrays
-            converted["address_embedding_length"] = len(converted.get("address_embedding", []))
-            converted["combined_embedding_length"] = len(converted.get("combined_embedding", []))
-            converted["address_embedding_sample"] = converted.get("address_embedding", [])[:5]
-            converted["combined_embedding_sample"] = converted.get("combined_embedding", [])[:5]
-            # Remove full vectors to keep response small
-            converted.pop("address_embedding", None)
-            converted.pop("combined_embedding", None)
-            serializable_results.append(converted)
-        
-        return {
-            "readings": serializable_results, 
-            "count": len(serializable_results)
-        }
-        
+    
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+    
+    serializable_results = []
+
+    for result in results:
+        converted = convert_milvus_result(result)
+        # Add vector info without showing full arrays
+        converted["address_embedding_length"] = len(converted.get("address_embedding", []))
+        converted["combined_embedding_length"] = len(converted.get("combined_embedding", []))
+        converted["address_embedding_sample"] = converted.get("address_embedding", [])[:5]
+        converted["combined_embedding_sample"] = converted.get("combined_embedding", [])[:5]
+        # Remove full vectors to keep response small
+        converted.pop("address_embedding", None)
+        converted.pop("combined_embedding", None)
+        serializable_results.append(converted)
+    
+    return {
+        "readings": serializable_results, 
+        "count": len(serializable_results)
+    }
+        
+    
 
 
     

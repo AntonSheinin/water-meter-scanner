@@ -6,28 +6,24 @@ import uvicorn
 import logging
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from api.routes import router
-from api.dependencies import get_milvus_service, get_bedrock_service
+from api.dependencies import bedrock_service, milvus_service
 
-# Load environment variables from .env file
+
 load_dotenv()
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
 app = FastAPI(
     title="Water Meter Scanner",
     description="A web application for scanning home water usage counters"
 )
 
 app.include_router(router)
-
-# Mount static files (HTML, CSS, JS)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.on_event("startup")
@@ -37,9 +33,6 @@ async def startup_event():
     """
 
     logger.info("Starting Water Meter Scanner application...")
-
-    milvus_service = get_milvus_service()
-    bedrock_service = get_bedrock_service()
     
     # Initialize Milvus with error handling
     try:

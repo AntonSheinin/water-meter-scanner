@@ -10,6 +10,8 @@ import boto3
 import base64
 import logging
 
+from fastapi import HTTPException
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,7 +41,7 @@ class BedrockService:
             )
             
             # Test connection by listing available models
-            bedrock_client = boto3.client(
+            _ = boto3.client(
                 'bedrock',
                 region_name=self.region,
                 aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
@@ -56,53 +58,37 @@ class BedrockService:
             self.connected = False
             return False
         
-    async def search_similar_readings(self, query: str) -> list:
-        """
-            Generate embedding for search query
-        """
-
-        try:
-            # Generate embedding for the search query
-            query_embedding = await self.generate_embedding(query)
-            return query_embedding
-            
-        except Exception as exc:
-            logger.error(f"❌ Search embedding generation failed: {str(exc)}")
-            raise
-        
     async def generate_embedding(self, text: str) -> list:
         """
             Generate embedding
         """
 
-        try:
-            if not self.connected:
-                raise Exception("Bedrock service not connected")
+        if not self.connected:
+            raise HTTPException(status_code=503, detail="bedrock service not available")
             
-            request_body = {
-                "inputText": text
-            }
-            
-            # Call Bedrock Embeddings
+        request_body = {
+            "inputText": text
+        }
+
+        try:  
             response = self.bedrock_runtime.invoke_model(
                 modelId=self.embed_model,
                 body=json.dumps(request_body)
             )
-            
-            # Parse response
-            response_body = json.loads(response['body'].read())
-            embedding = response_body.get('embedding', [])
-            
-            if not embedding:
-                raise ValueError("No embedding returned from Bedrock")
-            
-            logger.info(f"✅ Generated embedding for text: {text[:50]}...")
-            return embedding
-            
+
         except Exception as exc:
             logger.error(f"❌ Embedding generation failed: {str(exc)}")
             raise
-
+            
+        response_body = json.loads(response['body'].read())
+        embedding = response_body.get('embedding', [])
+        
+        if not embedding:
+            raise ValueError("No embedding returned from Bedrock")
+        
+        logger.info(f"✅ Generated embedding for text: {text[:50]}...")
+        return embedding
+            
     async def generate_meter_embeddings(self, address_info: dict, meter_value: float, units: str) -> dict:
         """
             Generate both address and combined embeddings for meter reading
@@ -171,202 +157,101 @@ class BedrockService:
         """
             Analyze water meter image using vision model to extract meter reading
         """
-        try:
-            if not self.connected:
-                raise Exception("Bedrock service not connected")
-            
-            # Preprocess image for better recognition
-            if preprocess:
-                image_bytes = self._preprocess_image(image_bytes)
 
-            # Encode image
-            image_base64 = self._encode_image(image_bytes)
-            
-            # Create structured prompt for meter reading extraction
-            full_address = f"{address_info.get('street_number', '')} {address_info.get('street_name', '')}, {address_info.get('city', '')}"
-            
-            prompt = f"""
-                        You are an expert technician in water-meter reading. Carefully analyze the attached image and return ONLY the JSON specified below—no additional text.
+        if not self.connected:
+            raise HTTPException(status_code=503, detail="bedrock service not available")
 
-                        Address: {full_address}  
+        # Preprocess image for better recognition
+        if preprocess:
+            image_bytes = self._preprocess_image(image_bytes)
 
-                        INSTRUCTIONS:
+        # Encode image
+        image_base64 = self._encode_image(image_bytes)
+        
+        # Create structured prompt for meter reading extraction
+        full_address = f"{address_info.get('street_number', '')} {address_info.get('street_name', '')}, {address_info.get('city', '')}"
+        
+        prompt = f"""
+                    You are an expert technician in water-meter reading. Carefully analyze the attached image and return ONLY the JSON specified below—no additional text.
 
-                        1. Identify meter type:
-                           - analog       - rotating pointer dials (0-9)  
-                           - digital      - full LCD/LED numeric display  
-                           - mechanical   - rolling number wheels visible through windows  
-                           - unclear      - cannot determine type confidently  
+                    Address: {full_address}  
 
-                        2. Read value (left→right, largest to smallest units) and note colored digits:
-                           - Color-coding note: Digits in a different color (often red) represent the fractional part—i.e., everything right of the decimal point. Include them after “.”
+                    INSTRUCTIONS:
 
-                        3. Type-specific rules:
-                           - analog:  Format: XXXXX.XXX (6-8 digits, with three decimals)  
-                           - digital: Transcribe all primary digits and any visible decimal places  
-                           - mechanical: Read black wheel digits only; ignore smaller digits but doesn't ignore the fractional part.
+                    1. Identify meter type:
+                        - analog       - rotating pointer dials (0-9)  
+                        - digital      - full LCD/LED numeric display  
+                        - mechanical   - rolling number wheels visible through windows  
+                        - unclear      - cannot determine type confidently  
 
-                        4. Determine units (cubic_meters, gallons, or liters). If unknown, set units to null.
+                    2. Read value (left→right, largest to smallest units) and note colored digits:
+                        - Color-coding note: Digits in a different color (often red) represent the fractional part—i.e., everything right of the decimal point. Include them after “.”
 
-                        5. Visibility & confidence:
-                           confidence: float 0.0-1.0 reflecting clarity  
-                           - 1.0: perfect clarity  
-                           - 0.8: minor glare/tilt  
-                           - 0.6: slight obstruction  
-                           - 0.4: partial obstruction/low contrast  
-                           - 0.2: very unclear, heavy glare/blur  
-                           - 0.0: unreadable  
+                    3. Type-specific rules:
+                        - analog:  Format: XXXXX.XXX (6-8 digits, with three decimals)  
+                        - digital: Transcribe all primary digits and any visible decimal places  
+                        - mechanical: Read black wheel digits only; ignore smaller digits but doesn't ignore the fractional part.
 
-                        OUTPUT (strictly this JSON):
-                        {{
-                            "meter_value": "should be a float number representing the reading",
-                            "confidence": "0.0 to 1.0 based on image clarity",
-                            "meter_type": "analog|digital|mechanical|unclear",
-                            "units": "cubic_meters|gallons|liters",
-                            "notes": "Description of what you see and why you chose this reading",
-                            "reading_visible": "true|false"
-                        }}
-                        
-                        IMPORTANT: 
-                            - meter_value must be a valid number (no leading zeros like 010009129)
-                            - If you see 010009129, return it as 10009129.0
-                            - Always use decimal format (add .0 if whole number)
-                        BE VERY CAREFUL with dial positions. If a pointer is between two number - get a lower number
-                    """
+                    4. Determine units (cubic_meters, gallons, or liters). If unknown, set units to null.
 
-            # Prepare request body for vision model
-            request_body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 1000,
-                "temperature": 0.1,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image",
-                                "source": {
-                                    "type": "base64",
-                                    "media_type": "image/jpeg",
-                                    "data": image_base64
-                                }
-                            },
-                            {
-                                "type": "text",
-                                "text": prompt
+                    5. Visibility & confidence:
+                        confidence: float 0.0-1.0 reflecting clarity  
+                        - 1.0: perfect clarity  
+                        - 0.8: minor glare/tilt  
+                        - 0.6: slight obstruction  
+                        - 0.4: partial obstruction/low contrast  
+                        - 0.2: very unclear, heavy glare/blur  
+                        - 0.0: unreadable  
+
+                    OUTPUT (strictly this JSON):
+                    {{
+                        "meter_value": "should be a float number representing the reading",
+                        "confidence": "0.0 to 1.0 based on image clarity",
+                        "meter_type": "analog|digital|mechanical|unclear",
+                        "units": "cubic_meters|gallons|liters",
+                        "notes": "Description of what you see and why you chose this reading",
+                        "reading_visible": "true|false"
+                    }}
+                    
+                    IMPORTANT: 
+                        - meter_value must be a valid number (no leading zeros like 010009129)
+                        - If you see 010009129, return it as 10009129.0
+                        - Always use decimal format (add .0 if whole number)
+                    BE VERY CAREFUL with dial positions. If a pointer is between two number - get a lower number
+                """
+
+        # Prepare request body for vision model
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 1000,
+            "temperature": 0.1,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_base64
                             }
-                        ]
-                    }
-                ]
-            }
+                        },
+                        {
+                            "type": "text",
+                            "text": prompt
+                        }
+                    ]
+                }
+            ]
+        }
 
-            # Call Bedrock vision model
+        try:
             response = self.bedrock_runtime.invoke_model(
                 modelId=self.vision_model,
                 body=json.dumps(request_body)
             )
-            
-            # Parse response
-            response_body = json.loads(response['body'].read())
-            content = response_body['content'][0]['text']
-            content_cleaned = content.strip()
-            
-            logger.info(f"Vision model response: {content}")
-            
-            # Extract JSON from response
-            try:
-                # Clean the response text
-                content_cleaned = re.sub(r':\s*0+(\d+)', r': \1', content_cleaned)
-                
-                # Try multiple strategies to find JSON
-                json_result = None
-                
-                # Strategy 1: Look for JSON block markers
-                if "```json" in content_cleaned:
-                    start_idx = content_cleaned.find("```json") + 7
-                    end_idx = content_cleaned.find("```", start_idx)
-                    if end_idx != -1:
-                        json_str = content_cleaned[start_idx:end_idx].strip()
-                        json_result = json.loads(json_str)
-                
-                # Strategy 2: Find JSON braces
-                elif '{' in content_cleaned and '}' in content_cleaned:
-                    start_idx = content_cleaned.find('{')
-                    end_idx = content_cleaned.rfind('}') + 1
-                    json_str = content_cleaned[start_idx:end_idx]
-                    json_result = json.loads(json_str)
-                
-                # Strategy 3: Try parsing entire response
-                else:
-                    json_result = json.loads(content_cleaned)
-                
-                if not json_result:
-                    raise ValueError("No valid JSON found in response")
-                
-                # Validate and fix meter_value
-                if 'meter_value' in json_result:
-                    # Handle string numbers or leading zeros
-                    meter_val = json_result['meter_value']
-                    if isinstance(meter_val, str):
-                        meter_val = meter_val.lstrip('0') or '0'  # Remove leading zeros
-                    json_result['meter_value'] = float(meter_val)
-                else:
-                    # Try to extract meter value from text if JSON parsing failed
-                    value_match = re.search(r'meter[_\s]*value["\s]*:?\s*([0-9]+\.?[0-9]*)', content_cleaned, re.IGNORECASE)
-                    if value_match:
-                        json_result['meter_value'] = float(value_match.group(1))
-                    else:
-                        json_result['meter_value'] = 0.0
-                
-                result = json_result
-
-                # Ensure confidence is between 0 and 1
-                confidence = float(result.get('confidence', 0.0))
-                result['confidence'] = max(0.0, min(1.0, confidence))
-                
-                # Add metadata
-                result['address'] = full_address
-                result['model_used'] = self.vision_model
-                
-                logger.info(f"✅ Successfully extracted meter reading: {result['meter_value']} (confidence: {result['confidence']})")
-                return result
-                
-            except (json.JSONDecodeError, ValueError) as exc:
-                logger.error(f"Failed to parse vision model response: {str(exc)}")
-                logger.error(f"Raw response: {content}")
-                
-                # Try to extract meter value using regex as fallback
-                meter_value = 0.0
-                confidence = 0.0
-                
-                # Look for numeric values in the response
-                value_patterns = [
-                    r'(\d+\.?\d*)\s*(?:cubic|liters|gallons|m3|m³)',
-                    r'reading[:\s]+(\d+\.?\d*)',
-                    r'value[:\s]+(\d+\.?\d*)',
-                    r'(\d{3,6}\.?\d*)'  # 3-6 digit numbers (typical meter readings)
-                ]
-                
-                for pattern in value_patterns:
-                    match = re.search(pattern, content, re.IGNORECASE)
-                    if match:
-                        meter_value = float(match.group(1))
-                        confidence = 0.7  # Medium confidence for regex extraction
-                        break
-                
-                # Return fallback result with extracted info
-                result = {
-                    "meter_value": meter_value,
-                    "confidence": confidence,
-                    "meter_type": "unknown",
-                    "units": "unknown",
-                    "notes": f"JSON parsing failed, used text extraction. Original error: {str(exc)}",
-                    "reading_visible": meter_value > 0,
-                    "address": full_address,
-                    "model_used": self.vision_model,
-                    "raw_response": content
-                }
-                
+        
         except Exception as exc:
             logger.error(f"❌ Vision analysis failed: {str(exc)}")
             return {
@@ -380,47 +265,148 @@ class BedrockService:
                 "model_used": self.vision_model,
                 "error": str(exc)
             }
-    
+            
+        response_body = json.loads(response['body'].read())
+        content = response_body['content'][0]['text']
+        content_cleaned = content.strip()
+        
+        logger.info(f"Vision model response: {content}")
+        
+        # Extract JSON from response
+        # Clean the response text
+        content_cleaned = re.sub(r':\s*0+(\d+)', r': \1', content_cleaned)
+        
+        # Try multiple strategies to find JSON
+        json_result = None
+            
+        try:
+            # Strategy 1: Look for JSON block markers
+            if "```json" in content_cleaned:
+                start_idx = content_cleaned.find("```json") + 7
+                end_idx = content_cleaned.find("```", start_idx)
+                if end_idx != -1:
+                    json_str = content_cleaned[start_idx:end_idx].strip()
+                    json_result = json.loads(json_str)
+            
+            # Strategy 2: Find JSON braces
+            elif '{' in content_cleaned and '}' in content_cleaned:
+                start_idx = content_cleaned.find('{')
+                end_idx = content_cleaned.rfind('}') + 1
+                json_str = content_cleaned[start_idx:end_idx]
+                json_result = json.loads(json_str)
+            
+            # Strategy 3: Try parsing entire response
+            else:
+                json_result = json.loads(content_cleaned)
+            
+            if not json_result:
+                raise ValueError("No valid JSON found in response")
+        
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.error(f"Failed to parse vision model response: {str(exc)}")
+            logger.error(f"Raw response: {content}")
+            
+            # Try to extract meter value using regex as fallback
+            meter_value = 0.0
+            confidence = 0.0
+            
+            # Look for numeric values in the response
+            value_patterns = [
+                r'(\d+\.?\d*)\s*(?:cubic|liters|gallons|m3|m³)',
+                r'reading[:\s]+(\d+\.?\d*)',
+                r'value[:\s]+(\d+\.?\d*)',
+                r'(\d{3,6}\.?\d*)'  # 3-6 digit numbers (typical meter readings)
+            ]
+            
+            for pattern in value_patterns:
+                match = re.search(pattern, content, re.IGNORECASE)
+                if match:
+                    meter_value = float(match.group(1))
+                    confidence = 0.7  # Medium confidence for regex extraction
+                    break
+            
+            # Return fallback result with extracted info
+            return {
+                "meter_value": meter_value,
+                "confidence": confidence,
+                "meter_type": "unknown",
+                "units": "unknown",
+                "notes": f"JSON parsing failed, used text extraction. Original error: {str(exc)}",
+                "reading_visible": meter_value > 0,
+                "address": full_address,
+                "model_used": self.vision_model,
+                "raw_response": content
+            }
+            
+        # Validate and fix meter_value
+        if 'meter_value' in json_result:
+            # Handle string numbers or leading zeros
+            meter_val = json_result['meter_value']
+
+            if isinstance(meter_val, str):
+                meter_val = meter_val.lstrip('0') or '0'  # Remove leading zeros
+
+            json_result['meter_value'] = float(meter_val)
+
+        else:
+            # Try to extract meter value from text if JSON parsing failed
+            value_match = re.search(r'meter[_\s]*value["\s]*:?\s*([0-9]+\.?[0-9]*)', content_cleaned, re.IGNORECASE)
+
+            if value_match:
+                json_result['meter_value'] = float(value_match.group(1))
+
+            else:
+                json_result['meter_value'] = 0.0
+        
+        result = json_result
+
+        # Ensure confidence is between 0 and 1
+        confidence = float(result.get('confidence', 0.0))
+        result['confidence'] = max(0.0, min(1.0, confidence))
+        
+        # Add metadata
+        result['address'] = full_address
+        result['model_used'] = self.vision_model
+        
+        logger.info(f"✅ Successfully extracted meter reading: {result['meter_value']} (confidence: {result['confidence']})")
+        return result
+                
     async def generate_chat_response(self, query: str, context_data: list) -> str:
         """
             Generate chat response using text model
         """
 
+        if not self.connected:
+            raise Exception("Bedrock service not connected")
+        
+        context = self._format_context_for_chat(context_data)
+        
+        # Create prompt for chat response
+        prompt = f"""
+                    You are a helpful assistant for water meter readings. Use the following data to answer questions about water usage.
+
+                    Available meter data:
+                    {context}
+
+                    User question: {query}
+
+                    Please provide a clear, helpful answer based on the available data. If the question asks for specific values, include the meter readings. 
+                    If comparing values, show the numbers clearly. If asking about locations, include the addresses.
+                """
+
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 500,
+            "temperature": 0.1,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        }
+            
         try:
-            if not self.connected:
-                raise Exception("Bedrock service not connected")
-            
-            context = self._format_context_for_chat(context_data)
-            
-            # Create prompt for chat response
-            prompt = f"""
-                        You are a helpful assistant for water meter readings. Use the following data to answer questions about water usage.
-
-                        Available meter data:
-                        {context}
-
-                        User question: {query}
-
-                        Please provide a clear, helpful answer based on the available data. If the question asks for specific values, include the meter readings. 
-                        If comparing values, show the numbers clearly. If asking about locations, include the addresses.
-
-                        Answer:
-                    """
-
-            # Prepare request for Claude 3 (Messages API format)
-            request_body = {
-                "anthropic_version": "bedrock-2023-05-31",
-                "max_tokens": 500,
-                "temperature": 0.1,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ]
-            }
-            
-            # Call Bedrock text model
             response = self.bedrock_runtime.invoke_model(
                 modelId=self.text_model,
                 body=json.dumps(request_body)
@@ -434,9 +420,9 @@ class BedrockService:
             logger.info(f"✅ Generated answer: {generated_text}")
             return generated_text
             
-        except Exception as e:
-            logger.error(f"❌ Chat response generation failed: {str(e)}")
-            return f"Sorry, I encountered an error generating a response: {str(e)}"
+        except Exception as exc:
+            logger.error(f"❌ Chat response generation failed: {str(exc)}")
+            return f"Sorry, I encountered an error generating a response: {str(exc)}"
     
     def _format_context_for_chat(self, context_data: list) -> str:
         """
@@ -459,28 +445,21 @@ class BedrockService:
         """
             Check Bedrock service health
         """
-
-        try:
-            if not self.connected:
-                return {
-                    "status": "disconnected",
-                    "error": "Not connected to AWS Bedrock"
-                }
-            
+        
+        if not self.connected:
             return {
-                "status": "healthy",
-                "connected": True,
-                "region": self.region,
-                "vision_model": self.vision_model,
-                "text_model": self.text_model,
-                "embed_model": self.embed_model
+                "status": "disconnected",
+                "error": "Not connected to AWS Bedrock"
             }
             
-        except Exception as exc:
-            return {
-                "status": "error",
-                "error": str(exc)
-            }
+        return {
+            "status": "healthy",
+            "connected": True,
+            "region": self.region,
+            "vision_model": self.vision_model,
+            "text_model": self.text_model,
+            "embed_model": self.embed_model
+        }
     
     async def initialize(self) -> bool:
         """

@@ -154,10 +154,10 @@ class MilvusService:
             Create vector indexes for efficient search
         """
 
-        try:
-            if not self.collection:
+        if not self.collection:
                 return False
-            
+
+        try:
             # Index parameters for vector fields
             index_params = {
                 'metric_type': 'L2',
@@ -189,9 +189,9 @@ class MilvusService:
             Complete initialization process
         """
 
-        try:
-            logger.info("Initializing Milvus service...")
+        logger.info("Initializing Milvus service...")
 
+        try:
             if not await self.connect():
                 logger.error("Failed to connect to Milvus")
                 return False
@@ -221,48 +221,48 @@ class MilvusService:
         
         try:
             self.collection.load()
-            
-            return {
-                'name': self.collection.name,
-                'description': self.collection.description,
-                'num_entities': self.collection.num_entities,
-                'schema': {
-                    'fields': [
-                        {
-                            'name': field.name,
-                            'type': str(field.dtype),
-                            'description': field.description
-                        }
-                        for field in self.collection.schema.fields
-                    ]
-                }
-            }
         
         except Exception as exc:
             logger.error(f'Failed to get collection info: {str(exc)}')
             return None
+            
+        return {
+            'name': self.collection.name,
+            'description': self.collection.description,
+            'num_entities': self.collection.num_entities,
+            'schema': {
+                'fields': [
+                    {
+                        'name': field.name,
+                        'type': str(field.dtype),
+                        'description': field.description
+                    }
+                    for field in self.collection.schema.fields
+                ]
+            }
+        }
     
     def health_check(self) -> dict:
         """
             Check Milvus connection health
         """
 
+        if not self.connected:
+            return {'status': 'disconnected', 'error': 'Not connected to Milvus'}
+
         try:
-            if not self.connected:
-                return {'status': 'disconnected', 'error': 'Not connected to Milvus'}
-            
             collections = utility.list_collections()
-            
-            return {
-                'status': 'healthy',
-                'connected': True,
-                'collections': collections,
-                'target_collection': self.collection_name,
-                'collection_exists': self.collection_name in collections
-            }
             
         except Exception as exc:
             return {'status': 'error', 'error': str(exc)}
+        
+        return {
+            'status': 'healthy',
+            'connected': True,
+            'collections': collections,
+            'target_collection': self.collection_name,
+            'collection_exists': self.collection_name in collections
+        }
         
     async def store_meter_reading(
         self, 
@@ -272,33 +272,32 @@ class MilvusService:
         confidence: float,
         embeddings: dict,
         timestamp: int,
-        units: str = "cubic_meters",
-        meter_type: str = "unknown"
+        units: float,
+        meter_type: str
     ) -> bool:
         """
             Store complete meter reading with embeddings in Milvus
         """
 
-        try:
-            if not self.collection:
-                logger.error("Collection not available for storage")
-                return False
-            
-            # Prepare data for insertion
-            data = [
-                [reading_id],
-                [embeddings["address_embedding"]],
-                [embeddings["combined_embedding"]],
-                [meter_value],
-                [address_info.get("city", "")],
-                [address_info.get("street_name", "")],
-                [address_info.get("street_number", "")],
-                [embeddings["full_address"]],
-                [timestamp],
-                [confidence]
-            ]
-            
-            # Insert into Milvus
+        if not self.collection:
+            logger.error("Collection not available for storage")
+            return False
+        
+        # Prepare data for insertion
+        data = [
+            [reading_id],
+            [embeddings["address_embedding"]],
+            [embeddings["combined_embedding"]],
+            [meter_value],
+            [address_info.get("city", "")],
+            [address_info.get("street_name", "")],
+            [address_info.get("street_number", "")],
+            [embeddings["full_address"]],
+            [timestamp],
+            [confidence]
+        ]
+
+        try:                       
             self.collection.insert(data)
             self.collection.flush()
             
@@ -308,105 +307,3 @@ class MilvusService:
         except Exception as exc:
             logger.error(f"❌ Failed to store meter reading: {str(exc)}")
             return False
-
-    async def search_by_address(self, query: str, limit: int = 10) -> list:
-        """
-            Search meters by address similarity
-        """
-
-        try:
-            if not self.collection:
-                return []
-            
-            self.collection.load()
-            
-            from services.bedrock_service import BedrockService
-            bedrock = BedrockService()
-
-            if not bedrock.connected:
-                await bedrock.connect()
-            
-            # Generate query embedding
-            query_embedding = await bedrock.generate_embedding(query)
-            
-            # Search in address_embedding field
-            search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
-            results = self.collection.search(
-                [query_embedding],
-                "address_embedding",
-                search_params,
-                limit=limit,
-                output_fields=["id", "meter_value", "full_address", "confidence", "timestamp", "city", "street_name", "street_number"]
-            )
-            
-            # Format results
-            formatted_results = []
-
-            for result in results[0]:
-                formatted_results.append({
-                    "id": result.entity.get("id"),
-                    "meter_value": float(result.entity.get("meter_value")),
-                    "full_address": result.entity.get("full_address"),
-                    "confidence": float(result.entity.get("confidence")),
-                    "timestamp": int(result.entity.get("timestamp")),
-                    "city": result.entity.get("city"),
-                    "street_name": result.entity.get("street_name"),
-                    "street_number": result.entity.get("street_number"),
-                    "similarity_score": float(result.distance)
-                })
-            
-            return formatted_results
-            
-        except Exception as e:
-            logger.error(f"❌ Address search failed: {str(e)}")
-            return []
-
-    async def search_by_context(self, query: str, limit: int = 10) -> list:
-        """
-            Search meters by combined context similarity
-        """
-
-        try:
-            if not self.collection:
-                return []
-            
-            self.collection.load()
-            
-            from services.bedrock_service import BedrockService
-            bedrock = BedrockService()
-
-            if not bedrock.connected:
-                await bedrock.connect()
-            
-            query_embedding = await bedrock.generate_embedding(query)
-            
-            # Search in combined_embedding field
-            search_params = {"metric_type": "L2", "params": {"nprobe": 10}}
-            results = self.collection.search(
-                [query_embedding],
-                "combined_embedding", 
-                search_params,
-                limit=limit,
-                output_fields=["id", "meter_value", "full_address", "confidence", "timestamp", "city", "street_name", "street_number"]
-            )
-            
-            # Format results
-            formatted_results = []
-            for result in results[0]:
-                formatted_results.append({
-                    "id": result.entity.get("id"),
-                    "meter_value": float(result.entity.get("meter_value")),
-                    "full_address": result.entity.get("full_address"),
-                    "confidence": float(result.entity.get("confidence")),
-                    "timestamp": int(result.entity.get("timestamp")),
-                    "city": result.entity.get("city"),
-                    "street_name": result.entity.get("street_name"),
-                    "street_number": result.entity.get("street_number"),
-                    "similarity_score": float(result.distance)
-                })
-            
-            return formatted_results
-            
-        except Exception as exc:
-            logger.error(f"❌ Context search failed: {str(exc)}")
-            return []
